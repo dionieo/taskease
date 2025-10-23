@@ -134,7 +134,7 @@ class _TaskPageState extends State<TaskPage> {
   }
 
   void _showAddTaskDialog(BuildContext context) {
-    _selectedDeadline = null;
+    DateTime? tempDeadline; // gunakan variabel lokal untuk state dialog
     _titleController.clear();
     _descController.clear();
 
@@ -161,10 +161,10 @@ class _TaskPageState extends State<TaskPage> {
                   children: [
                     Expanded(
                       child: Text(
-                        _selectedDeadline == null
+                        tempDeadline == null
                             ? 'Belum pilih tanggal & waktu'
                             : DateFormat('EEEE, d MMM yyyy HH:mm', 'id_ID')
-                                .format(_selectedDeadline!),
+                                .format(tempDeadline!),
                       ),
                     ),
                     TextButton(
@@ -177,16 +177,26 @@ class _TaskPageState extends State<TaskPage> {
                           locale: const Locale('id', 'ID'),
                         );
                         if (date == null) return;
+
                         final time = await showTimePicker(
                           context: context,
                           initialTime: TimeOfDay.now(),
                         );
                         if (time == null) return;
-                        final combined = DateTime(
-                            date.year, date.month, date.day, time.hour, time.minute);
-                        setModalState(() => _selectedDeadline = combined);
-                        // debug cepat
-                        print('DEBUG: dialog selectedDeadline = $_selectedDeadline');
+
+                        final deadline = DateTime(
+                          date.year,
+                          date.month,
+                          date.day,
+                          time.hour,
+                          time.minute,
+                        );
+
+                        // Update state dialog
+                        setModalState(() {
+                          tempDeadline = deadline;
+                          print('DEBUG: Dialog deadline selected = $tempDeadline');
+                        });
                       },
                       child: const Text('Pilih'),
                     ),
@@ -204,17 +214,19 @@ class _TaskPageState extends State<TaskPage> {
               onPressed: () async {
                 final title = _titleController.text.trim();
                 if (title.isEmpty) return;
-                // debug sebelum simpan
-                print('DEBUG: saving selectedDeadline = $_selectedDeadline');
+
+                // Gunakan tempDeadline untuk membuat TaskModel
                 final task = TaskModel(
                   id: DateTime.now().millisecondsSinceEpoch.toString(),
                   title: title,
                   description: _descController.text.trim(),
-                  deadline: _selectedDeadline,
+                  deadline: tempDeadline, // gunakan tempDeadline
                   isDone: false,
                 );
-                print('DEBUG: newTask.deadline = ${task.deadline}');
+
+                print('DEBUG: Saving task with deadline = ${task.deadline}');
                 await _storage.addTask(task);
+
                 setState(() {}); // refresh list utama
                 Navigator.pop(context);
               },
