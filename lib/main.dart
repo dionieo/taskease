@@ -1,3 +1,4 @@
+import 'package:TaskEase/config/app_colors.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
@@ -34,7 +35,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'TaskEase',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
         useMaterial3: true,
       ),
       home: const TaskPage(),
@@ -71,7 +72,7 @@ class _TaskPageState extends State<TaskPage> {
   String _calculateDeadline(TaskModel task) {
     if (task.deadline == null) return 'Tidak ada deadline';
     final now = DateTime.now();
-    final diff = task.deadline!.difference(now).inDays;
+    final diff = task.deadline!.difference(now).inDays+1;
 
     if (diff > 1) return '⏰ Tersisa $diff hari lagi';
     if (diff == 1) return '🕐 Deadline besok';
@@ -91,18 +92,13 @@ class _TaskPageState extends State<TaskPage> {
       builder: (context) {
         final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
 
-        // Gunakan StatefulBuilder agar pemilihan tanggal & waktu dapat diupdate di dalam sheet
+        // Gunakan StatefulBuilder agar pemilihan tanggal dapat diupdate di dalam sheet
         return StatefulBuilder(builder: (context, setModalState) {
-          DateTime? tempDeadline = _selectedDeadline;
-          TimeOfDay? tempTime = tempDeadline != null
-              ? TimeOfDay(hour: tempDeadline.hour, minute: tempDeadline.minute)
-              : null;
-
+          // Pakai state class-level agar perubahan terlihat pada UI dan saat menyimpan
           String formatSelected() {
-            if (tempDeadline == null) return 'Belum pilih tanggal & waktu';
-            final datePart = DateFormat('dd MMM yyyy', 'id_ID').format(tempDeadline!);
-            final timePart = DateFormat('HH:mm').format(tempDeadline!);
-            return '$datePart, $timePart';
+            if (_selectedDeadline == null) return 'Belum pilih tanggal';
+            final datePart = DateFormat('dd MMM yyyy', 'id_ID').format(_selectedDeadline!);
+            return datePart;
           }
 
           return DraggableScrollableSheet(
@@ -166,41 +162,19 @@ class _TaskPageState extends State<TaskPage> {
                         onPressed: () async {
                           final pickedDate = await showDatePicker(
                             context: context,
-                            initialDate: tempDeadline ?? DateTime.now(),
-                            firstDate: DateTime.now().subtract(const Duration(days: 0)),
+                            initialDate: _selectedDeadline ?? DateTime.now(),
+                            firstDate: DateTime.now(),
                             lastDate: DateTime.now().add(const Duration(days: 365)),
                             locale: const Locale('id', 'ID'),
                           );
                           if (pickedDate != null) {
-                            // jika sudah ada waktu yang dipilih, gabungkan; jika belum, default ke 00:00
-                            final hour = tempTime?.hour ?? TimeOfDay.now().hour;
-                            final minute = tempTime?.minute ?? TimeOfDay.now().minute;
                             setModalState(() {
-                              tempDeadline = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, hour, minute);
+                              _selectedDeadline = DateTime(pickedDate.year, pickedDate.month, pickedDate.day);
                             });
                           }
                         },
                         icon: const Icon(Icons.calendar_today, size: 18),
                         label: const Text('Pilih Tanggal'),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton.icon(
-                        onPressed: () async {
-                          final pickedTime = await showTimePicker(
-                            context: context,
-                            initialTime: tempTime ?? TimeOfDay.now(),
-                            
-                          );
-                          if (pickedTime != null) {
-                            setModalState(() {
-                              tempTime = pickedTime;
-                              final baseDate = tempDeadline ?? DateTime.now();
-                              tempDeadline = DateTime(baseDate.year, baseDate.month, baseDate.day, pickedTime.hour, pickedTime.minute);
-                            });
-                          }
-                        },
-                        icon: const Icon(Icons.access_time, size: 18),
-                        label: const Text('Pilih Waktu'),
                       ),
                     ],
                   ),
@@ -215,35 +189,33 @@ class _TaskPageState extends State<TaskPage> {
                       onPressed: () async {
                         if (_titleController.text.trim().isEmpty) return;
 
-                        // Perbaiki: Gunakan tempDeadline, bukan _selectedDeadline
                         final newTask = TaskModel(
                           id: DateTime.now().millisecondsSinceEpoch.toString(),
                           title: _titleController.text.trim(),
                           description: _descriptionController.text.trim(),
-                          deadline: tempDeadline,
+                          deadline: _selectedDeadline,
                           isDone: false,
                         );
 
-                        debugPrint('DEBUG: tempDeadline = $tempDeadline');
+                        debugPrint('DEBUG: _selectedDeadline = $_selectedDeadline');
                         debugPrint('DEBUG: newTask.deadline = ${newTask.deadline}');
 
                         await _storage.addTask(newTask);
 
-                        // DEBUG: cek apa yang tersimpan di storage
-                        final all = _storage.getTasks();
-                        debugPrint('DEBUG: all deadlines = ${all.map((t) => t.deadline).toList()}');
-
-                        // Jadwalkan notifikasi jika ada deadline
-                        if (tempDeadline != null) { // Gunakan tempDeadline
+                        // Jadwalkan notifikasi jika ada deadline (catatan: scheduledTime sekarang berisi date-only)
+                        if (_selectedDeadline != null) {
                           await NotificationService.showNotification(
                             title: 'Pengingat Tugas',
                             body: 'Deadline tugas "${_titleController.text}" sebentar lagi!',
-                            scheduledTime: tempDeadline
+                            scheduledTime: _selectedDeadline,
+                            reminderHoursBefore: 24 // 24 jam sebelum deadline
                           );
                         }
 
                         if (mounted) {
                           setState(() {});
+                          // reset selected deadline setelah menyimpan
+                          _selectedDeadline = null;
                           Navigator.of(context).pop();
                         }
                       },
@@ -269,8 +241,8 @@ class _TaskPageState extends State<TaskPage> {
       appBar: AppBar(
         title: const Text('TaskEase'),
         centerTitle: true,
-        backgroundColor: Colors.indigo,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.primary,
+        foregroundColor: AppColors.background,
         elevation: 0,
       ),
       body: Container(
@@ -291,14 +263,19 @@ class _TaskPageState extends State<TaskPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Halo 👋',
+                    Text(
+                    DateTime.now().hour < 10
+                      ? 'Selamat Pagi'
+                      : DateTime.now().hour < 15
+                        ? 'Selamat Siang'
+                        : 'Selamat Malam',
                       style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary),),
                   const SizedBox(height: 4),
                   Text(
                     dateFormat.format(DateTime.now()),
                     style:
-                        const TextStyle(fontSize: 13, color: Colors.black54),
+                        const TextStyle(fontSize: 13, color: AppColors.textPrimary),
                   ),
                 ],
               ),
@@ -314,9 +291,9 @@ class _TaskPageState extends State<TaskPage> {
                           children: const [
                             Icon(Icons.inbox, size: 56, color: Colors.black26),
                             SizedBox(height: 8),
-                            Text('Belum ada tugas 😴',
+                            Text('Yeay belum ada tugas 🥳!',
                                 style: TextStyle(
-                                    fontSize: 16, color: Colors.black54)),
+                                    fontSize: 16, color: AppColors.textPrimary)),
                           ],
                         ),
                       )
@@ -337,7 +314,7 @@ class _TaskPageState extends State<TaskPage> {
                                   horizontal: 12, vertical: 4),
                               leading: Checkbox(
                                 value: task.isDone,
-                                activeColor: Colors.green,
+                                activeColor: AppColors.primary,
                                 onChanged: (value) async {
                                   final updated = TaskModel(
                                     id: task.id,
@@ -361,7 +338,7 @@ class _TaskPageState extends State<TaskPage> {
                               subtitle: Text(_calculateDeadline(task)),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete,
-                                    color: Colors.redAccent),
+                                    color: AppColors.primary),
                                 onPressed: () async {
                                   await _storage.deleteTask(index);
                                   setState(() {});
@@ -389,8 +366,10 @@ class _TaskPageState extends State<TaskPage> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddTaskSheet,
-        backgroundColor: Colors.indigo,
-        child: const Icon(Icons.add),
+        backgroundColor: AppColors.primary,
+        child: const Icon(
+          Icons.add,
+          color: AppColors.background,),
       ),
     );
   }

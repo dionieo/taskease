@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../data/models/task_model.dart';
 import '../../data/services/hive_storage.dart';
-import '../../data/services/notification_service.dart'; // 🔔 Tambahan
 
 class TaskPage extends StatefulWidget {
   const TaskPage({super.key});
@@ -115,8 +114,7 @@ class _TaskPageState extends State<TaskPage> {
               Text(task.description ?? ''),
             if (task.deadline != null)
               Text(
-                // tampilkan deadline ketika ada
-                DateFormat('EEEE, d MMM yyyy HH:mm', 'id_ID')
+                DateFormat('EEEE, d MMM yyyy', 'id_ID')
                     .format(task.deadline!),
                 style: const TextStyle(fontSize: 12, color: Colors.redAccent),
               ),
@@ -134,7 +132,7 @@ class _TaskPageState extends State<TaskPage> {
   }
 
   void _showAddTaskDialog(BuildContext context) {
-    DateTime? tempDeadline; // gunakan variabel lokal untuk state dialog
+    _selectedDeadline = null;
     _titleController.clear();
     _descController.clear();
 
@@ -161,10 +159,10 @@ class _TaskPageState extends State<TaskPage> {
                   children: [
                     Expanded(
                       child: Text(
-                        tempDeadline == null
-                            ? 'Belum pilih tanggal & waktu'
-                            : DateFormat('EEEE, d MMM yyyy HH:mm', 'id_ID')
-                                .format(tempDeadline!),
+                        _selectedDeadline == null
+                            ? 'Belum pilih tanggal'
+                            : DateFormat('EEEE, d MMMM yyyy', 'id_ID')
+                                .format(_selectedDeadline!),
                       ),
                     ),
                     TextButton(
@@ -178,27 +176,19 @@ class _TaskPageState extends State<TaskPage> {
                         );
                         if (date == null) return;
 
-                        final time = await showTimePicker(
-                          context: context,
-                          initialTime: TimeOfDay.now(),
-                        );
-                        if (time == null) return;
-
+                        // Remove time picker and just use date
                         final deadline = DateTime(
                           date.year,
                           date.month,
                           date.day,
-                          time.hour,
-                          time.minute,
                         );
 
-                        // Update state dialog
-                        setModalState(() {
-                          tempDeadline = deadline;
-                          print('DEBUG: Dialog deadline selected = $tempDeadline');
+                        setState(() {
+                          _selectedDeadline = deadline;
                         });
+                        setModalState(() {});
                       },
-                      child: const Text('Pilih'),
+                      child: const Text('Pilih Tanggal'),
                     ),
                   ],
                 ),
@@ -215,19 +205,16 @@ class _TaskPageState extends State<TaskPage> {
                 final title = _titleController.text.trim();
                 if (title.isEmpty) return;
 
-                // Gunakan tempDeadline untuk membuat TaskModel
                 final task = TaskModel(
                   id: DateTime.now().millisecondsSinceEpoch.toString(),
                   title: title,
                   description: _descController.text.trim(),
-                  deadline: tempDeadline, // gunakan tempDeadline
+                  deadline: _selectedDeadline, // Use the state variable here
                   isDone: false,
                 );
 
-                print('DEBUG: Saving task with deadline = ${task.deadline}');
                 await _storage.addTask(task);
-
-                setState(() {}); // refresh list utama
+                setState(() {}); 
                 Navigator.pop(context);
               },
               child: const Text('Simpan'),
