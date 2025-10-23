@@ -115,7 +115,9 @@ class _TaskPageState extends State<TaskPage> {
               Text(task.description ?? ''),
             if (task.deadline != null)
               Text(
-                'Deadline: ${DateFormat('d MMM yyyy, HH:mm', 'id_ID').format(task.deadline!)}',
+                // tampilkan deadline ketika ada
+                DateFormat('EEEE, d MMM yyyy HH:mm', 'id_ID')
+                    .format(task.deadline!),
                 style: const TextStyle(fontSize: 12, color: Colors.redAccent),
               ),
           ],
@@ -133,107 +135,93 @@ class _TaskPageState extends State<TaskPage> {
 
   void _showAddTaskDialog(BuildContext context) {
     _selectedDeadline = null;
+    _titleController.clear();
+    _descController.clear();
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Tambah Tugas Baru'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _titleController,
-                decoration: const InputDecoration(labelText: 'Judul Tugas'),
-              ),
-              TextField(
-                controller: _descController,
-                decoration: const InputDecoration(labelText: 'Deskripsi'),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _selectedDeadline == null
-                          ? 'Belum pilih deadline'
-                          : 'Deadline: ${DateFormat('d MMM yyyy, HH:mm', 'id_ID').format(_selectedDeadline!)}',
+      builder: (_) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          title: const Text('Tambah Tugas Baru'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _titleController,
+                  decoration: const InputDecoration(labelText: 'Judul'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _descController,
+                  decoration: const InputDecoration(labelText: 'Deskripsi'),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _selectedDeadline == null
+                            ? 'Belum pilih tanggal & waktu'
+                            : DateFormat('EEEE, d MMM yyyy HH:mm', 'id_ID')
+                                .format(_selectedDeadline!),
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.calendar_today),
-                    onPressed: () async {
-                      final date = await showDatePicker(
-                        context: context,
-                        initialDate: DateTime.now(),
-                        firstDate: DateTime.now(),
-                        lastDate: DateTime(2100),
-                      );
-                      if (date != null) {
+                    TextButton(
+                      onPressed: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                          locale: const Locale('id', 'ID'),
+                        );
+                        if (date == null) return;
                         final time = await showTimePicker(
                           context: context,
                           initialTime: TimeOfDay.now(),
                         );
-                        if (time != null) {
-                          setState(() {
-                            _selectedDeadline = DateTime(
-                              date.year,
-                              date.month,
-                              date.day,
-                              time.hour,
-                              time.minute,
-                            );
-                          });
-                        }
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ],
+                        if (time == null) return;
+                        final combined = DateTime(
+                            date.year, date.month, date.day, time.hour, time.minute);
+                        setModalState(() => _selectedDeadline = combined);
+                        // debug cepat
+                        print('DEBUG: dialog selectedDeadline = $_selectedDeadline');
+                      },
+                      child: const Text('Pilih'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _titleController.clear();
-              _descController.clear();
-              Navigator.pop(context);
-            },
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (_titleController.text.isNotEmpty) {
-                final newTask = TaskModel(
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final title = _titleController.text.trim();
+                if (title.isEmpty) return;
+                // debug sebelum simpan
+                print('DEBUG: saving selectedDeadline = $_selectedDeadline');
+                final task = TaskModel(
                   id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  title: _titleController.text,
-                  description: _descController.text,
+                  title: title,
+                  description: _descController.text.trim(),
                   deadline: _selectedDeadline,
                   isDone: false,
                 );
-
-                await _storage.addTask(newTask);
-
-                if (_selectedDeadline != null) {
-                  await NotificationService.showNotification(
-                    title: 'Pengingat Tugas',
-                    body:
-                        'Tugas "${_titleController.text}" akan berakhir sebentar lagi!',
-                    scheduledTime:
-                        _selectedDeadline!.subtract(const Duration(minutes: 30)),
-                  );
-                }
-
-                _titleController.clear();
-                _descController.clear();
+                print('DEBUG: newTask.deadline = ${task.deadline}');
+                await _storage.addTask(task);
+                setState(() {}); // refresh list utama
                 Navigator.pop(context);
-                setState(() {});
-              }
-            },
-            child: const Text('Simpan'),
-          ),
-        ],
+              },
+              child: const Text('Simpan'),
+            ),
+          ],
+        ),
       ),
     );
   }

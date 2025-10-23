@@ -17,6 +17,7 @@ void main() async {
 
   Hive.registerAdapter(TaskModelAdapter());
   await Hive.openBox<TaskModel>('tasks');
+  // await Hive.box<TaskModel>('tasks').clear();
 
   // ✅ Inisialisasi notifikasi lokal
   await NotificationService.init();
@@ -219,7 +220,7 @@ class _TaskPageState extends State<TaskPage> {
                           id: DateTime.now().millisecondsSinceEpoch.toString(),
                           title: _titleController.text.trim(),
                           description: _descriptionController.text.trim(),
-                          deadline: tempDeadline, // Gunakan tempDeadline langsung
+                          deadline: tempDeadline,
                           isDone: false,
                         );
 
