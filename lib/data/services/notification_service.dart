@@ -61,21 +61,25 @@ class NotificationService {
       iOS: DarwinNotificationDetails(),
     );
 
-    // Hitung waktu notifikasi
-    DateTime scheduledTime = DateTime.now();
-    scheduledTime = scheduledTime.subtract(Duration(hours: reminderHoursBefore));
+    // Jika tidak ada scheduledTime -> tampilkan segera
+    if (scheduledTime == null) {
+      await _notifications.show(0, title, body, details);
+      return;
+    }
+
+    // Hitung waktu notifikasi berdasarkan scheduledTime dan reminderHoursBefore
+    DateTime notifyTime = scheduledTime.subtract(Duration(hours: reminderHoursBefore));
 
     // Jangan jadwalkan notifikasi di masa lalu
-    if (scheduledTime.isBefore(DateTime.now())) {
-      scheduledTime = DateTime.now().add(const Duration(seconds: 5));
+    if (notifyTime.isBefore(DateTime.now())) {
+      notifyTime = DateTime.now().add(const Duration(seconds: 5));
     }
-  
-    // Jadwalkan atau tampilkan langsung
+
     await _notifications.zonedSchedule(
       0,
       title,
       body,
-      tz.TZDateTime.from(scheduledTime, tz.local),
+      tz.TZDateTime.from(notifyTime, tz.local),
       details,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.dateAndTime,

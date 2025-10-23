@@ -68,16 +68,33 @@ class _TaskPageState extends State<TaskPage> {
   final TextEditingController _descriptionController = TextEditingController();
   DateTime? _selectedDeadline;
 
-  // Hitung sisa waktu deadline
+  // Hitung sisa waktu deadline (tampilkan hanya hari + jam, tanpa menit)
   String _calculateDeadline(TaskModel task) {
     if (task.deadline == null) return 'Tidak ada deadline';
-    final now = DateTime.now();
-    final diff = task.deadline!.difference(now).inDays+1;
 
-    if (diff > 1) return '⏰ Tersisa $diff hari lagi';
-    if (diff == 1) return '🕐 Deadline besok';
-    if (diff == 0) return '⚠️ Deadline hari ini!';
-    return '❌ Terlambat ${diff.abs()} hari';
+    final now = DateTime.now();
+    final diff = task.deadline!.difference(now);
+
+    // Jika sudah lewat
+    if (diff.isNegative) {
+      final daysLate = diff.abs().inDays;
+      final hoursLate = (diff.abs().inHours % 24);
+      if (daysLate > 0) return '❌ Terlambat $daysLate hari ${hoursLate} jam';
+      return '❌ Terlambat $hoursLate jam';
+    }
+
+    // Masih belum lewat: ambil hari dan jam (tanpa menit)
+    final days = diff.inDays;
+    final hours = diff.inHours % 24;
+
+    if (days > 1) return '⏰ Tersisa $days hari ${hours} jam';
+    if (days == 1) {
+      if (hours == 0) return '🕐 Deadline besok';
+      return '🕐 Besok, sisa $hours jam';
+    }
+    // days == 0
+    if (hours > 0) return '⚠️ Tersisa $hours jam';
+    return '⚠️ Deadline kurang dari 1 jam';
   }
 
   Future<void> _showAddTaskSheet() async {
@@ -92,13 +109,12 @@ class _TaskPageState extends State<TaskPage> {
       builder: (context) {
         final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
 
-        // Gunakan StatefulBuilder agar pemilihan tanggal dapat diupdate di dalam sheet
+        // Gunakan StatefulBuilder agar pemilihan tanggal & waktu dapat diupdate di dalam sheet
         return StatefulBuilder(builder: (context, setModalState) {
-          // Pakai state class-level agar perubahan terlihat pada UI dan saat menyimpan
           String formatSelected() {
             if (_selectedDeadline == null) return 'Belum pilih tanggal';
-            final datePart = DateFormat('dd MMM yyyy', 'id_ID').format(_selectedDeadline!);
-            return datePart;
+            // tampilkan tanggal + jam:menit
+            return DateFormat('dd MMM yyyy HH:mm', 'id_ID').format(_selectedDeadline!);
           }
 
           return DraggableScrollableSheet(
@@ -167,14 +183,34 @@ class _TaskPageState extends State<TaskPage> {
                             lastDate: DateTime.now().add(const Duration(days: 365)),
                             locale: const Locale('id', 'ID'),
                           );
-                          if (pickedDate != null) {
-                            setModalState(() {
-                              _selectedDeadline = DateTime(pickedDate.year, pickedDate.month, pickedDate.day);
-                            });
+                          if (pickedDate == null) return;
+
+                          // Setelah pilih tanggal, minta jam & menit
+                          final pickedTime = await showTimePicker(
+                            context: context,
+                            initialTime: _selectedDeadline != null
+                                ? TimeOfDay(hour: _selectedDeadline!.hour, minute: _selectedDeadline!.minute)
+                                : TimeOfDay.now(),
+                          );
+                          if (pickedTime == null) {
+                            // jika user batal pilih waktu, jangan set deadline
+                            return;
                           }
+
+                          final combined = DateTime(
+                            pickedDate.year,
+                            pickedDate.month,
+                            pickedDate.day,
+                            pickedTime.hour,
+                            pickedTime.minute,
+                          );
+
+                          setModalState(() {
+                            _selectedDeadline = combined;
+                          });
                         },
                         icon: const Icon(Icons.calendar_today, size: 18),
-                        label: const Text('Pilih Tanggal'),
+                        label: const Text('Pilih Tanggal & Waktu'),
                       ),
                     ],
                   ),
@@ -202,19 +238,18 @@ class _TaskPageState extends State<TaskPage> {
 
                         await _storage.addTask(newTask);
 
-                        // Jadwalkan notifikasi jika ada deadline (catatan: scheduledTime sekarang berisi date-only)
+                        // Jadwalkan notifikasi jika ada deadline
                         if (_selectedDeadline != null) {
                           await NotificationService.showNotification(
                             title: 'Pengingat Tugas',
                             body: 'Deadline tugas "${_titleController.text}" sebentar lagi!',
                             scheduledTime: _selectedDeadline,
-                            reminderHoursBefore: 24 // 24 jam sebelum deadline
+                            reminderHoursBefore: 24, // 24 jam sebelum deadline
                           );
                         }
 
                         if (mounted) {
                           setState(() {});
-                          // reset selected deadline setelah menyimpan
                           _selectedDeadline = null;
                           Navigator.of(context).pop();
                         }
@@ -352,6 +387,18 @@ class _TaskPageState extends State<TaskPage> {
                                     child: Align(
                                       alignment: Alignment.centerLeft,
                                       child: Text(task.description!),
+                                    ),
+                                  ),
+                                if (task.deadline != null)
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        // tampilkan tanggal + jam:menit di detail
+                                        DateFormat('EEEE, dd MMM yyyy HH:mm', 'id_ID').format(task.deadline!),
+                                        style: const TextStyle(fontSize: 13, color: Colors.black54),
+                                      ),
                                     ),
                                   ),
                               ],

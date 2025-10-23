@@ -114,7 +114,8 @@ class _TaskPageState extends State<TaskPage> {
               Text(task.description ?? ''),
             if (task.deadline != null)
               Text(
-                DateFormat('EEEE, d MMM yyyy', 'id_ID')
+                // tampilkan tanggal + jam:menit
+                DateFormat('EEEE, d MMM yyyy HH:mm', 'id_ID')
                     .format(task.deadline!),
                 style: const TextStyle(fontSize: 12, color: Colors.redAccent),
               ),
@@ -161,7 +162,7 @@ class _TaskPageState extends State<TaskPage> {
                       child: Text(
                         _selectedDeadline == null
                             ? 'Belum pilih tanggal'
-                            : DateFormat('EEEE, d MMMM yyyy', 'id_ID')
+                            : DateFormat('EEEE, d MMMM yyyy HH:mm', 'id_ID')
                                 .format(_selectedDeadline!),
                       ),
                     ),
@@ -176,19 +177,25 @@ class _TaskPageState extends State<TaskPage> {
                         );
                         if (date == null) return;
 
-                        // Remove time picker and just use date
+                        final time = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.now(),
+                        );
+                        if (time == null) return;
+
                         final deadline = DateTime(
                           date.year,
                           date.month,
                           date.day,
+                          time.hour,
+                          time.minute,
                         );
 
-                        setState(() {
+                        setModalState(() {
                           _selectedDeadline = deadline;
                         });
-                        setModalState(() {});
                       },
-                      child: const Text('Pilih Tanggal'),
+                      child: const Text('Pilih Tanggal & Waktu'),
                     ),
                   ],
                 ),
@@ -209,7 +216,7 @@ class _TaskPageState extends State<TaskPage> {
                   id: DateTime.now().millisecondsSinceEpoch.toString(),
                   title: title,
                   description: _descController.text.trim(),
-                  deadline: _selectedDeadline, // Use the state variable here
+                  deadline: _selectedDeadline, // now includes time
                   isDone: false,
                 );
 
