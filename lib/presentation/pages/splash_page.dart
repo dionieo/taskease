@@ -20,7 +20,8 @@ class _SplashPageState extends State<SplashPage> {
   Future<void> _navigateToHome() async {
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) {
-      Navigator.pushReplacementNamed(context, AppRoutes.home);
+      // Ganti pushReplacementNamed dengan pushNamedAndRemoveUntil untuk pastikan stack dibersihkan
+      Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (route) => false);
     }
   }
 
@@ -32,10 +33,12 @@ class _SplashPageState extends State<SplashPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.task_alt,
-              size: 100,
-              color: Colors.white,
+            Image.asset(
+              '../assets/icons/logo.png',
+              width: 100,
+              height: 100,
+              fit: BoxFit.contain,
+              // color: Colors.white, // uncomment to tint the image white if needed
             ),
             const SizedBox(height: 24),
             Text(

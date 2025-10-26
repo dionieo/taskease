@@ -1,6 +1,7 @@
 // import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -32,6 +33,39 @@ class NotificationService {
     await _notifications.initialize(initSettings);
     tz.initializeTimeZones();
     print("✅ Notifikasi lokal diinisialisasi");
+  }
+
+  /// Minta permission notifikasi (Android 13+ / iOS)
+  static Future<bool> requestPermission() async {
+    if (kIsWeb) return true;
+
+    try {
+      final status = await Permission.notification.status;
+      if (status.isGranted) {
+        print('Notification permission already granted');
+        return true;
+      }
+
+      final result = await Permission.notification.request();
+
+      if (result.isGranted) {
+        print('Notification permission granted');
+        return true;
+      }
+
+      if (result.isPermanentlyDenied) {
+        // Jika user menolak permanen, arahkan ke settings agar bisa enable manual
+        print('Notification permission permanently denied, opening app settings');
+        await openAppSettings();
+      } else {
+        print('Notification permission denied');
+      }
+
+      return result.isGranted;
+    } catch (e) {
+      print('Error requesting notification permission: $e');
+      return false;
+    }
   }
 
   /// Tampilkan notifikasi langsung atau beberapa jam sebelum deadline
@@ -82,6 +116,7 @@ class NotificationService {
       tz.TZDateTime.from(notifyTime, tz.local),
       details,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.dateAndTime,
     );
   }

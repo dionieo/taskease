@@ -19,6 +19,9 @@ void main() async {
   await initializeDateFormatting('id_ID', null);
   Intl.defaultLocale = 'id_ID';
 
+  // Minta permission notifikasi (akan memunculkan dialog di Android 13+)
+  await NotificationService.requestPermission();
+
   await NotificationService.init();
 
   runApp(const MyApp());

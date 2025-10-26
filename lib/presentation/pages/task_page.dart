@@ -19,6 +19,9 @@ class _TaskPageState extends State<TaskPage> {
   DateTime? _selectedDeadline;
   int _selectedPriority = 2;
 
+  // Tambahan: set untuk menyimpan index item yang sedang diperluas (menampilkan deskripsi)
+  final Set<int> _expandedIndices = {};
+
   @override
   Widget build(BuildContext context) {
     final tasks = _storage.getTasks();
@@ -215,6 +218,8 @@ class _TaskPageState extends State<TaskPage> {
         priorityIcon = Icons.remove;
     }
 
+    final bool isExpanded = _expandedIndices.contains(index);
+
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       margin: const EdgeInsets.only(bottom: 12),
@@ -250,16 +255,40 @@ class _TaskPageState extends State<TaskPage> {
                       setState(() {});
                     },
                   ),
+                  // Judul sekarang dapat diketuk untuk toggle deskripsi
                   Expanded(
-                    child: Text(
-                      task.title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        decoration: task.isDone
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
-                        color: task.isDone ? Colors.grey : Colors.black87,
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          if (isExpanded) {
+                            _expandedIndices.remove(index);
+                          } else {
+                            _expandedIndices.add(index);
+                          }
+                        });
+                      },
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              task.title,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                decoration: task.isDone
+                                    ? TextDecoration.lineThrough
+                                    : TextDecoration.none,
+                                color: task.isDone ? Colors.grey : Colors.black87,
+                              ),
+                            ),
+                          ),
+                          // Indikator kecil apakah deskripsi terbuka
+                          Icon(
+                            isExpanded ? Icons.expand_less : Icons.expand_more,
+                            size: 20,
+                            color: Colors.grey,
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -290,13 +319,36 @@ class _TaskPageState extends State<TaskPage> {
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     onPressed: () async {
-                      await _storage.deleteTask(index);
-                      setState(() {});
+                      // Dialog konfirmasi sebelum menghapus
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Konfirmasi'),
+                          content: const Text('Hapus tugas ini?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('Batal'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirm == true) {
+                        await _storage.deleteTask(index);
+                        // pastikan juga hapus state expanded jika ada
+                        _expandedIndices.remove(index);
+                        setState(() {});
+                      }
                     },
                   ),
                 ],
               ),
-              if (task.description?.isNotEmpty ?? false) ...[
+              if ((task.description?.isNotEmpty ?? false) && isExpanded) ...[
                 const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.only(left: 48),
