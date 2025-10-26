@@ -1,26 +1,24 @@
-import 'package:TaskEase/config/app_colors.dart';
-import 'package:intl/date_symbol_data_local.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
+import 'config/app_colors.dart';
+import 'config/app_routes.dart';
+import 'config/app_constants.dart';
 import 'data/models/task_model.dart';
-import 'data/services/hive_storage.dart';
 import 'data/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
+  
+  Hive.registerAdapter(TaskModelAdapter());
+  await Hive.openBox<TaskModel>(AppConstants.taskBoxName);
 
-  // Inisialisasi format tanggal lokal Indonesia
   await initializeDateFormatting('id_ID', null);
   Intl.defaultLocale = 'id_ID';
 
-  Hive.registerAdapter(TaskModelAdapter());
-  await Hive.openBox<TaskModel>('tasks');
-  // await Hive.box<TaskModel>('tasks').clear();
-
-  // ✅ Inisialisasi notifikasi lokal
   await NotificationService.init();
 
   runApp(const MyApp());
@@ -32,392 +30,24 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
-      title: 'TaskEase',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
         useMaterial3: true,
+        scaffoldBackgroundColor: AppColors.background,
       ),
-      home: const TaskPage(),
-
-      // 🔽 Tambahkan ini agar DatePicker & lokal Indonesia berfungsi
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('id', 'ID'), // Bahasa Indonesia
-        Locale('en', 'US'), // Bahasa Inggris (fallback)
+        Locale('id', 'ID'),
       ],
-    );
-  }
-}
-
-class TaskPage extends StatefulWidget {
-  const TaskPage({super.key});
-
-  @override
-  State<TaskPage> createState() => _TaskPageState();
-}
-
-class _TaskPageState extends State<TaskPage> {
-  final HiveStorage _storage = HiveStorage();
-
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
-  DateTime? _selectedDeadline;
-
-  // Hitung sisa waktu deadline (tampilkan hanya hari + jam, tanpa menit)
-  String _calculateDeadline(TaskModel task) {
-    if (task.deadline == null) return 'Tidak ada deadline';
-
-    final now = DateTime.now();
-    final diff = task.deadline!.difference(now);
-
-    // Jika sudah lewat
-    if (diff.isNegative) {
-      final daysLate = diff.abs().inDays;
-      final hoursLate = (diff.abs().inHours % 24);
-      if (daysLate > 0) return '❌ Terlambat $daysLate hari ${hoursLate} jam';
-      return '❌ Terlambat $hoursLate jam';
-    }
-
-    // Masih belum lewat: ambil hari dan jam (tanpa menit)
-    final days = diff.inDays;
-    final hours = diff.inHours % 24;
-
-    if (days > 1) return '⏰ Tersisa $days hari ${hours} jam';
-    if (days == 1) {
-      if (hours == 0) return '🕐 Deadline besok';
-      return '🕐 Besok, sisa $hours jam';
-    }
-    // days == 0
-    if (hours > 0) return '⚠️ Tersisa $hours jam';
-    return '⚠️ Deadline kurang dari 1 jam';
-  }
-
-  Future<void> _showAddTaskSheet() async {
-    _titleController.clear();
-    _descriptionController.clear();
-    _selectedDeadline = null;
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
-
-        // Gunakan StatefulBuilder agar pemilihan tanggal & waktu dapat diupdate di dalam sheet
-        return StatefulBuilder(builder: (context, setModalState) {
-          String formatSelected() {
-            if (_selectedDeadline == null) return 'Belum pilih tanggal';
-            // tampilkan tanggal + jam:menit
-            return DateFormat('dd MMM yyyy HH:mm', 'id_ID').format(_selectedDeadline!);
-          }
-
-          return DraggableScrollableSheet(
-            initialChildSize: 0.45,
-            minChildSize: 0.25,
-            maxChildSize: 0.9,
-            builder: (_, controller) => Container(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomPadding),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
-              ),
-              child: ListView(
-                controller: controller,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.indigo,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Tambah Tugas Baru',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _titleController,
-                    decoration: const InputDecoration(
-                      labelText: 'Judul tugas',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _descriptionController,
-                    decoration: const InputDecoration(
-                      labelText: 'Deskripsi (opsional)',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 4,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          formatSelected(),
-                          style: const TextStyle(fontSize: 14, color: Colors.black87),
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: () async {
-                          final pickedDate = await showDatePicker(
-                            context: context,
-                            initialDate: _selectedDeadline ?? DateTime.now(),
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(const Duration(days: 365)),
-                            locale: const Locale('id', 'ID'),
-                          );
-                          if (pickedDate == null) return;
-
-                          // Setelah pilih tanggal, minta jam & menit
-                          final pickedTime = await showTimePicker(
-                            context: context,
-                            initialTime: _selectedDeadline != null
-                                ? TimeOfDay(hour: _selectedDeadline!.hour, minute: _selectedDeadline!.minute)
-                                : TimeOfDay.now(),
-                          );
-                          if (pickedTime == null) {
-                            // jika user batal pilih waktu, jangan set deadline
-                            return;
-                          }
-
-                          final combined = DateTime(
-                            pickedDate.year,
-                            pickedDate.month,
-                            pickedDate.day,
-                            pickedTime.hour,
-                            pickedTime.minute,
-                          );
-
-                          setModalState(() {
-                            _selectedDeadline = combined;
-                          });
-                        },
-                        icon: const Icon(Icons.calendar_today, size: 18),
-                        label: const Text('Pilih Tanggal & Waktu'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      onPressed: () async {
-                        if (_titleController.text.trim().isEmpty) return;
-
-                        final newTask = TaskModel(
-                          id: DateTime.now().millisecondsSinceEpoch.toString(),
-                          title: _titleController.text.trim(),
-                          description: _descriptionController.text.trim(),
-                          deadline: _selectedDeadline,
-                          isDone: false,
-                        );
-
-                        debugPrint('DEBUG: _selectedDeadline = $_selectedDeadline');
-                        debugPrint('DEBUG: newTask.deadline = ${newTask.deadline}');
-
-                        await _storage.addTask(newTask);
-
-                        // Jadwalkan notifikasi jika ada deadline
-                        if (_selectedDeadline != null) {
-                          await NotificationService.showNotification(
-                            title: 'Pengingat Tugas',
-                            body: 'Deadline tugas "${_titleController.text}" sebentar lagi!',
-                            scheduledTime: _selectedDeadline,
-                            reminderHoursBefore: 24, // 24 jam sebelum deadline
-                          );
-                        }
-
-                        if (mounted) {
-                          setState(() {});
-                          _selectedDeadline = null;
-                          Navigator.of(context).pop();
-                        }
-                      },
-                      icon: const Icon(Icons.save),
-                      label: const Text('Simpan'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        });
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final tasks = _storage.getTasks();
-    final dateFormat = DateFormat('EEEE, dd MMM yyyy', 'id_ID');
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('TaskEase'),
-        centerTitle: true,
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.background,
-        elevation: 0,
-      ),
-      body: Container(
-        color: Colors.grey[100],
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
-                boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                    Text(
-                    DateTime.now().hour < 10
-                      ? 'Selamat Pagi'
-                      : DateTime.now().hour < 15
-                        ? 'Selamat Siang'
-                        : 'Selamat Malam',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary),),
-                  const SizedBox(height: 4),
-                  Text(
-                    dateFormat.format(DateTime.now()),
-                    style:
-                        const TextStyle(fontSize: 13, color: AppColors.textPrimary),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: tasks.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.inbox, size: 56, color: Colors.black26),
-                            SizedBox(height: 8),
-                            Text('Yeay belum ada tugas 🥳!',
-                                style: TextStyle(
-                                    fontSize: 16, color: AppColors.textPrimary)),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        padding:
-                            const EdgeInsets.only(top: 8, bottom: 16),
-                        itemCount: tasks.length,
-                        itemBuilder: (context, index) {
-                          final task = tasks[index];
-                          return Card(
-                            margin:
-                                const EdgeInsets.symmetric(vertical: 8),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                            elevation: 2,
-                            child: ExpansionTile(
-                              tilePadding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 4),
-                              leading: Checkbox(
-                                value: task.isDone,
-                                activeColor: AppColors.primary,
-                                onChanged: (value) async {
-                                  final updated = TaskModel(
-                                    id: task.id,
-                                    title: task.title,
-                                    description: task.description,
-                                    deadline: task.deadline,
-                                    isDone: value ?? false,
-                                  );
-                                  await _storage.updateTask(index, updated);
-                                  setState(() {});
-                                },
-                              ),
-                              title: Text(
-                                task.title,
-                                style: TextStyle(
-                                  decoration: task.isDone
-                                      ? TextDecoration.lineThrough
-                                      : TextDecoration.none,
-                                ),
-                              ),
-                              subtitle: Text(_calculateDeadline(task)),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete,
-                                    color: AppColors.primary),
-                                onPressed: () async {
-                                  await _storage.deleteTask(index);
-                                  setState(() {});
-                                },
-                              ),
-                              children: [
-                                if (task.description?.isNotEmpty ?? false)
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        16, 8, 16, 16),
-                                    child: Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(task.description!),
-                                    ),
-                                  ),
-                                if (task.deadline != null)
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                                    child: Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        // tampilkan tanggal + jam:menit di detail
-                                        DateFormat('EEEE, dd MMM yyyy HH:mm', 'id_ID').format(task.deadline!),
-                                        style: const TextStyle(fontSize: 13, color: Colors.black54),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddTaskSheet,
-        backgroundColor: AppColors.primary,
-        child: const Icon(
-          Icons.add,
-          color: AppColors.background,),
-      ),
+      locale: const Locale('id', 'ID'),
+      initialRoute: AppRoutes.splash,
+      routes: AppRoutes.routes,
     );
   }
 }
