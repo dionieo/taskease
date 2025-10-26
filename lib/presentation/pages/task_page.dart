@@ -4,6 +4,7 @@ import '../../config/app_colors.dart';
 import '../../config/app_constants.dart';
 import '../../data/models/task_model.dart';
 import '../../data/services/hive_storage.dart';
+import '../../data/services/notification_service.dart';
 
 class TaskPage extends StatefulWidget {
   const TaskPage({super.key});
@@ -319,7 +320,6 @@ class _TaskPageState extends State<TaskPage> {
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     onPressed: () async {
-                      // Dialog konfirmasi sebelum menghapus
                       final confirm = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
@@ -339,8 +339,9 @@ class _TaskPageState extends State<TaskPage> {
                       );
 
                       if (confirm == true) {
+                        // Batalkan notifikasi dulu sebelum hapus
+                        await NotificationService.cancelTaskReminders(task.id);
                         await _storage.deleteTask(index);
-                        // pastikan juga hapus state expanded jika ada
                         _expandedIndices.remove(index);
                         setState(() {});
                       }
@@ -587,6 +588,16 @@ class _TaskPageState extends State<TaskPage> {
                           );
 
                           await _storage.addTask(task);
+
+                          // Jadwalkan notifikasi jika ada deadline
+                          if (tempDeadline != null) {
+                            await NotificationService.scheduleTaskReminders(
+                              taskId: task.id,
+                              title: task.title,
+                              deadline: tempDeadline!,
+                            );
+                          }
+
                           setState(() {});
                           Navigator.pop(context);
                         },
