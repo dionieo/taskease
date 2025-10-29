@@ -20,7 +20,6 @@ class _TaskPageState extends State<TaskPage> {
   DateTime? _selectedDeadline;
   int _selectedPriority = 2;
 
-  // Tambahan: set untuk menyimpan index item yang sedang diperluas (menampilkan deskripsi)
   final Set<int> _expandedIndices = {};
 
   @override
@@ -33,7 +32,6 @@ class _TaskPageState extends State<TaskPage> {
       backgroundColor: AppColors.background,
       body: CustomScrollView(
         slivers: [
-          // Header yang lebih cantik dengan SliverAppBar
           SliverAppBar(
             expandedHeight: 200,
             floating: false,
@@ -100,8 +98,6 @@ class _TaskPageState extends State<TaskPage> {
               ),
             ),
           ),
-          
-          // List tugas
           tasks.isEmpty
               ? SliverFillRemaining(
                   child: Center(
@@ -228,7 +224,8 @@ class _TaskPageState extends State<TaskPage> {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          // Bisa tambahkan detail view di sini
+          // Ketuk card untuk edit
+          _showEditTaskDialog(context, task, index);
         },
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -256,7 +253,6 @@ class _TaskPageState extends State<TaskPage> {
                       setState(() {});
                     },
                   ),
-                  // Judul sekarang dapat diketuk untuk toggle deskripsi
                   Expanded(
                     child: InkWell(
                       onTap: () {
@@ -283,7 +279,6 @@ class _TaskPageState extends State<TaskPage> {
                               ),
                             ),
                           ),
-                          // Indikator kecil apakah deskripsi terbuka
                           Icon(
                             isExpanded ? Icons.expand_less : Icons.expand_more,
                             size: 20,
@@ -317,35 +312,61 @@ class _TaskPageState extends State<TaskPage> {
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Konfirmasi'),
-                          content: const Text('Hapus tugas ini?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('Batal'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('Hapus', style: TextStyle(color: Colors.red)),
-                            ),
-                          ],
-                        ),
-                      );
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) async {
+                      if (value == 'edit') {
+                        _showEditTaskDialog(context, task, index);
+                      } else if (value == 'delete') {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Konfirmasi'),
+                            content: const Text('Hapus tugas ini?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(false),
+                                child: const Text('Batal'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(true),
+                                child: const Text('Hapus',
+                                    style: TextStyle(color: Colors.red)),
+                              ),
+                            ],
+                          ),
+                        );
 
-                      if (confirm == true) {
-                        // Batalkan notifikasi dulu sebelum hapus
-                        await NotificationService.cancelTaskReminders(task.id);
-                        await _storage.deleteTask(index);
-                        _expandedIndices.remove(index);
-                        setState(() {});
+                        if (confirm == true) {
+                          await NotificationService.cancelTaskReminders(task.id);
+                          await _storage.deleteTask(index);
+                          _expandedIndices.remove(index);
+                          setState(() {});
+                        }
                       }
                     },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit, size: 20),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, size: 20, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Hapus', style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -404,6 +425,90 @@ class _TaskPageState extends State<TaskPage> {
     _descController.clear();
     _selectedPriority = 2;
 
+    _showTaskDialog(
+      context: context,
+      title: 'Tambah Tugas Baru',
+      tempDeadline: tempDeadline,
+      onSave: (tempDeadline) async {
+        final title = _titleController.text.trim();
+        if (title.isEmpty) return;
+
+        final task = TaskModel(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: title,
+          description: _descController.text.trim(),
+          deadline: tempDeadline,
+          isDone: false,
+          priority: _selectedPriority,
+        );
+
+        await _storage.addTask(task);
+
+        if (tempDeadline != null) {
+          await NotificationService.scheduleTaskReminders(
+            taskId: task.id,
+            title: task.title,
+            deadline: tempDeadline,
+          );
+        }
+
+        setState(() {});
+        Navigator.pop(context);
+      },
+    );
+  }
+
+  void _showEditTaskDialog(BuildContext context, TaskModel task, int index) {
+    _titleController.text = task.title;
+    _descController.text = task.description ?? '';
+    _selectedPriority = task.priority;
+    DateTime? tempDeadline = task.deadline;
+
+    _showTaskDialog(
+      context: context,
+      title: 'Edit Tugas',
+      tempDeadline: tempDeadline,
+      onSave: (newDeadline) async {
+        final title = _titleController.text.trim();
+        if (title.isEmpty) return;
+
+        // Batalkan notifikasi lama
+        await NotificationService.cancelTaskReminders(task.id);
+
+        final updatedTask = TaskModel(
+          id: task.id,
+          title: title,
+          description: _descController.text.trim(),
+          deadline: newDeadline,
+          isDone: task.isDone,
+          priority: _selectedPriority,
+        );
+
+        await _storage.updateTask(index, updatedTask);
+
+        // Jadwalkan notifikasi baru jika ada deadline
+        if (newDeadline != null) {
+          await NotificationService.scheduleTaskReminders(
+            taskId: updatedTask.id,
+            title: updatedTask.title,
+            deadline: newDeadline,
+          );
+        }
+
+        setState(() {});
+        Navigator.pop(context);
+      },
+    );
+  }
+
+  void _showTaskDialog({
+    required BuildContext context,
+    required String title,
+    required DateTime? tempDeadline,
+    required Function(DateTime?) onSave,
+  }) {
+    DateTime? localDeadline = tempDeadline;
+
     showDialog(
       context: context,
       builder: (_) => Dialog(
@@ -418,14 +523,13 @@ class _TaskPageState extends State<TaskPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: Row(
                     children: [
-                      const Text(
-                        'Tambah Tugas Baru',
-                        style: TextStyle(
+                      Text(
+                        title,
+                        style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
@@ -439,7 +543,6 @@ class _TaskPageState extends State<TaskPage> {
                   ),
                 ),
                 const Divider(height: 1),
-                // Content
                 Flexible(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(20),
@@ -502,7 +605,7 @@ class _TaskPageState extends State<TaskPage> {
                           onTap: () async {
                             final date = await showDatePicker(
                               context: context,
-                              initialDate: DateTime.now(),
+                              initialDate: localDeadline ?? DateTime.now(),
                               firstDate: DateTime.now(),
                               lastDate: DateTime(2100),
                               locale: const Locale('id', 'ID'),
@@ -511,14 +614,19 @@ class _TaskPageState extends State<TaskPage> {
 
                             final time = await showTimePicker(
                               context: context,
-                              initialTime: TimeOfDay.now(),
+                              initialTime: localDeadline != null
+                                  ? TimeOfDay.fromDateTime(localDeadline!)
+                                  : TimeOfDay.now(),
                             );
                             if (time == null) return;
 
                             setModalState(() {
-                              tempDeadline = DateTime(
-                                date.year, date.month, date.day,
-                                time.hour, time.minute,
+                              localDeadline = DateTime(
+                                date.year,
+                                date.month,
+                                date.day,
+                                time.hour,
+                                time.minute,
                               );
                             });
                           },
@@ -530,21 +638,26 @@ class _TaskPageState extends State<TaskPage> {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.calendar_today, color: Colors.grey, size: 20),
+                                const Icon(Icons.calendar_today,
+                                    color: Colors.grey, size: 20),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    tempDeadline == null
+                                    localDeadline == null
                                         ? 'Pilih tanggal & waktu'
-                                        : DateFormat('EEE, d MMM yyyy • HH:mm', 'id_ID')
-                                            .format(tempDeadline!),
+                                        : DateFormat('EEE, d MMM yyyy • HH:mm',
+                                                'id_ID')
+                                            .format(localDeadline!),
                                     style: TextStyle(
-                                      color: tempDeadline == null ? Colors.grey : Colors.black87,
+                                      color: localDeadline == null
+                                          ? Colors.grey
+                                          : Colors.black87,
                                       fontSize: 14,
                                     ),
                                   ),
                                 ),
-                                const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                                const Icon(Icons.arrow_forward_ios,
+                                    size: 14, color: Colors.grey),
                               ],
                             ),
                           ),
@@ -553,7 +666,6 @@ class _TaskPageState extends State<TaskPage> {
                     ),
                   ),
                 ),
-                // Actions
                 const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.all(16),
@@ -572,35 +684,10 @@ class _TaskPageState extends State<TaskPage> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 12),
                         ),
-                        onPressed: () async {
-                          final title = _titleController.text.trim();
-                          if (title.isEmpty) return;
-
-                          final task = TaskModel(
-                            id: DateTime.now().millisecondsSinceEpoch.toString(),
-                            title: title,
-                            description: _descController.text.trim(),
-                            deadline: tempDeadline,
-                            isDone: false,
-                            priority: _selectedPriority,
-                          );
-
-                          await _storage.addTask(task);
-
-                          // Jadwalkan notifikasi jika ada deadline
-                          if (tempDeadline != null) {
-                            await NotificationService.scheduleTaskReminders(
-                              taskId: task.id,
-                              title: task.title,
-                              deadline: tempDeadline!,
-                            );
-                          }
-
-                          setState(() {});
-                          Navigator.pop(context);
-                        },
+                        onPressed: () => onSave(localDeadline),
                         child: const Text('Simpan'),
                       ),
                     ],
